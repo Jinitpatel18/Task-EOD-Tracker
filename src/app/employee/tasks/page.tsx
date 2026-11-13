@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   CheckSquare,
   Search,
-  Filter,
   Clock,
   Calendar,
   MessageSquare,
-  CheckCircle2,
-  X,
   AlertCircle,
   RotateCcw,
+  ArrowRight,
+  Flag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -30,8 +30,9 @@ interface EmployeeTask {
   updatedAt: string;
 }
 
-function EmployeeTasksContent() {
+function TasksContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const statusParam = searchParams.get("status");
 
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
@@ -41,6 +42,7 @@ function EmployeeTasksContent() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(statusParam || "all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Modal State
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -64,7 +66,11 @@ function EmployeeTasksContent() {
       const res = await fetch(`/api/employee/tasks?${params.toString()}`);
       const data = await res.json();
       if (res.ok && data.tasks) {
-        setTasks(data.tasks);
+        let filtered = data.tasks;
+        if (!showCompleted) {
+          filtered = filtered.filter((t: EmployeeTask) => t.status !== "Completed");
+        }
+        setTasks(filtered);
       }
     } catch {
       toast.error("Failed to load tasks");
@@ -104,7 +110,7 @@ function EmployeeTasksContent() {
         setSubmitting(false);
         return;
       }
-      toast.success("Task status updated successfully!");
+      toast.success("Task updated successfully!");
       setIsUpdateModalOpen(false);
       setSelectedTask(null);
       fetchTasks();
@@ -133,40 +139,73 @@ function EmployeeTasksContent() {
     }
   };
 
-  const getPriorityBadgeClass = (priority: string) => {
+  const getPriorityConfig = (priority: string) => {
     switch (priority) {
       case "High":
-        return "bg-rose-50 text-rose-700 border-rose-200";
+        return {
+          bg: "bg-rose-50",
+          border: "border-rose-200",
+          text: "text-rose-700",
+          dot: "bg-rose-500",
+        };
       case "Medium":
-        return "bg-amber-50 text-amber-700 border-amber-200";
+        return {
+          bg: "bg-amber-50",
+          border: "border-amber-200",
+          text: "text-amber-700",
+          dot: "bg-amber-500",
+        };
       default:
-        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+        return {
+          bg: "bg-emerald-50",
+          border: "border-emerald-200",
+          text: "text-emerald-700",
+          dot: "bg-emerald-500",
+        };
     }
   };
 
-  const getStatusBadgeClass = (status: string) => {
+  const getStatusConfig = (status: string) => {
     switch (status) {
       case "Completed":
-        return "bg-emerald-100 text-emerald-800";
+        return { bg: "bg-emerald-100", text: "text-emerald-800", icon: "✓" };
       case "In Progress":
-        return "bg-blue-100 text-blue-800";
+        return { bg: "bg-blue-100", text: "text-blue-800", icon: "▶" };
       case "Blocked":
-        return "bg-rose-100 text-rose-800";
+        return { bg: "bg-rose-100", text: "text-rose-800", icon: "⚠" };
       default:
-        return "bg-slate-100 text-slate-700";
+        return { bg: "bg-slate-100", text: "text-slate-700", icon: "○" };
     }
+  };
+
+  const getDaysUntilDue = (dueDate: string) => {
+    if (!dueDate) return null;
+    return Math.ceil((new Date(dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          My Assigned Tasks
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Review tasks assigned to you, update work status (Pending → In Progress → Completed), and leave comments.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
+            <CheckSquare className="h-7 w-7 text-indigo-600" />
+            My Assigned Tasks
+          </h1>
+          <p className="text-sm text-slate-500 mt-1 ml-10">
+            Click on any task to view details and update your progress
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCompleted(!showCompleted)}
+          className={`ml-10 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors self-start sm:self-auto ${
+            showCompleted
+              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+              : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+          }`}
+        >
+          {showCompleted ? "Hide Completed" : "Show Completed"}
+        </button>
       </div>
 
       {/* Filter Bar */}
@@ -217,6 +256,8 @@ function EmployeeTasksContent() {
               setSearch("");
               setStatusFilter("all");
               setPriorityFilter("all");
+              setShowCompleted(false);
+              fetchTasks();
             }}
             title="Reset filters"
             className="p-1.5 border border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50"
@@ -226,87 +267,107 @@ function EmployeeTasksContent() {
         </div>
       </div>
 
-      {/* Tasks Grid / Cards */}
+      {/* Stats Bar */}
+      {!loading && tasks.length > 0 && (
+        <div className="flex items-center gap-4 text-xs text-slate-500 px-1">
+          <span className="font-semibold">{tasks.length}</span> task{tasks.length !== 1 ? "s" : ""} shown
+          {tasks.some((t) => t.status !== "Completed") && (
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3 w-3 text-amber-500" />
+              {tasks.filter((t) => t.status !== "Completed").length} active
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Tasks Grid */}
       {loading ? (
         <div className="p-16 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 text-sm">
           Loading assigned tasks...
         </div>
       ) : tasks.length === 0 ? (
-        <div className="p-16 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 text-sm">
-          No tasks found matching your filters.
+        <div className="p-16 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 text-sm space-y-3">
+          <div className="text-4xl">📋</div>
+          <p>No tasks found matching your filters.</p>
+          <button
+            onClick={() => {
+              setSearch("");
+              setStatusFilter("all");
+              setPriorityFilter("all");
+              setShowCompleted(false);
+              fetchTasks();
+            }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-500"
+          >
+            Reset Filters
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-base font-bold text-slate-900 leading-snug">
-                    {task.title}
-                  </h3>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getPriorityBadgeClass(
-                      task.priority
-                    )}`}
-                  >
-                    {task.priority} Priority
-                  </span>
+          {tasks.map((task) => {
+            const priorityCfg = getPriorityConfig(task.priority);
+            const statusCfg = getStatusConfig(task.status);
+            const daysLeft = getDaysUntilDue(task.dueDate);
+
+            return (
+              <Link
+                key={task.id}
+                href={`/employee/tasks/${task.id}`}
+                className="group block bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-lg hover:border-indigo-200 transition-all duration-200 cursor-pointer"
+              >
+                {/* Card Header */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${priorityCfg.bg} ${priorityCfg.border} ${priorityCfg.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${priorityCfg.dot}`} />
+                        {task.priority}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 leading-snug group-hover:text-indigo-700 transition-colors line-clamp-1">
+                      {task.title}
+                    </h3>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-400 transition-colors shrink-0 mt-1" />
                 </div>
 
+                {/* Description Preview */}
                 {task.description && (
-                  <p className="mt-2 text-xs text-slate-600 line-clamp-2">
+                  <p className="text-xs text-slate-600 line-clamp-2 mb-3 leading-relaxed">
                     {task.description}
                   </p>
                 )}
 
+                {/* Comment Preview */}
                 {task.comment && (
-                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 flex items-start gap-2">
+                  <div className="mb-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 flex items-start gap-2">
                     <MessageSquare className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
                     <p className="line-clamp-2 italic">"{task.comment}"</p>
                   </div>
                 )}
-              </div>
 
-              {/* Card Footer */}
-              <div className="pt-3 border-t border-slate-100 space-y-3">
-                <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5 text-slate-400" />
-                    Assigned: {format(new Date(task.assignedDate), "MMM dd")}
-                  </span>
-                  <span className="flex items-center gap-1 font-semibold text-slate-700">
-                    <Calendar className="h-3.5 w-3.5 text-indigo-500" />
-                    Due: {format(new Date(task.dueDate), "MMM dd, yyyy")}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      Status:
-                    </span>
-                    <span
-                      className={`text-xs font-bold px-2.5 py-0.5 rounded-md ${getStatusBadgeClass(
-                        task.status
-                      )}`}
-                    >
-                      {task.status}
+                {/* Card Footer */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                      Due: {format(new Date(task.dueDate), "MMM dd")}
+                      {daysLeft !== null && daysLeft < 0 && (
+                        <span className="text-rose-600 font-semibold">({Math.abs(daysLeft)}d overdue)</span>
+                      )}
+                      {daysLeft !== null && daysLeft >= 0 && daysLeft <= 2 && (
+                        <span className="text-amber-600 font-semibold">({daysLeft === 0 ? "Today" : `${daysLeft}d`})</span>
+                      )}
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => openUpdateModal(task)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 shadow-2xs transition-colors"
-                  >
-                    Update Status & Comment
-                  </button>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${statusCfg.bg} ${statusCfg.text}`}>
+                    {statusCfg.icon} {task.status}
+                  </span>
                 </div>
-              </div>
-            </div>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
 
@@ -323,7 +384,7 @@ function EmployeeTasksContent() {
                 <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
                   Update Task
                 </span>
-                <h3 className="text-base font-bold text-slate-900 leading-tight">
+                <h3 className="text-base font-bold text-slate-900 leading-tight mt-0.5">
                   {selectedTask.title}
                 </h3>
               </div>
@@ -331,32 +392,32 @@ function EmployeeTasksContent() {
                 onClick={() => setIsUpdateModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
-                <X className="h-5 w-5" />
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
             <form onSubmit={handleUpdate} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Task Status (Pending → In Progress → Completed)
+                  Task Status
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {["Pending", "In Progress", "Completed", "Blocked"].map(
-                    (st) => (
-                      <button
-                        type="button"
-                        key={st}
-                        onClick={() => setStatusValue(st)}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-center ${
-                          statusValue === st
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    )
-                  )}
+                  {["Pending", "In Progress", "Completed", "Blocked"].map((st) => (
+                    <button
+                      type="button"
+                      key={st}
+                      onClick={() => setStatusValue(st)}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-center ${
+                        statusValue === st
+                          ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -369,7 +430,7 @@ function EmployeeTasksContent() {
                   placeholder="Share what you worked on, status updates, or blockers encountered..."
                   value={commentValue}
                   onChange={(e) => setCommentValue(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
                 />
               </div>
 
@@ -384,9 +445,10 @@ function EmployeeTasksContent() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-2"
                 >
-                  {submitting ? "Saving..." : "Save Progress"}
+                  {submitting && <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
+                  {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
@@ -399,9 +461,8 @@ function EmployeeTasksContent() {
 
 export default function EmployeeTasksPage() {
   return (
-    <Suspense fallback={<div>Loading tasks...</div>}>
-      <EmployeeTasksContent />
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><Clock className="h-8 w-8 animate-spin text-indigo-500" /></div>}>
+      <TasksContent />
     </Suspense>
   );
 }
-

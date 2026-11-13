@@ -7,6 +7,52 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+// GET /api/employee/tasks/[id] - Fetch a single task by ID
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+
+    await connectToDatabase();
+
+    const task = await Task.findOne({ _id: id, assignedTo: user.userId })
+      .populate("assignedBy", "name email")
+      .lean();
+
+    if (!task) {
+      return NextResponse.json(
+        { error: "Task not found or not assigned to you" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      task: {
+        id: String(task._id),
+        title: task.title,
+        description: task.description || "",
+        priority: task.priority,
+        status: task.status,
+        assignedDate: task.assignedDate,
+        dueDate: task.dueDate,
+        comment: task.comment || "",
+        assignedBy: task.assignedBy ? task.assignedBy.name : "Admin",
+        updatedAt: task.updatedAt,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get task error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to fetch task" },
+      { status: 500 }
+    );
+  }
+}
+
 // PATCH /api/employee/tasks/[id] - Update task status and comment
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   try {
@@ -60,3 +106,5 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     );
   }
 }
+
+export const dynamic = "force-dynamic";
