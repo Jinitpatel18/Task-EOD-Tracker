@@ -10,6 +10,7 @@ import {
   MessageSquare,
   AlertCircle,
   RotateCcw,
+  ArrowLeft,
   ArrowRight,
   Flag,
   User,
@@ -51,7 +52,7 @@ function TasksContent() {
   // Modal State
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<EmployeeTask | null>(null);
-  const [statusValue, setStatusValue] = useState<string>("Pending");
+  const [statusValue, setStatusValue] = useState<EmployeeTask["status"]>("Pending");
   const [commentValue, setCommentValue] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -153,7 +154,7 @@ function TasksContent() {
     }
   };
 
-  const quickChangeStatus = async (task: EmployeeTask, newStatus: string) => {
+  const quickChangeStatus = async (task: EmployeeTask, newStatus: EmployeeTask["status"]) => {
     try {
       const res = await fetch(`/api/employee/task-detail/${task.id}`, {
         method: "PATCH",
@@ -312,7 +313,7 @@ function TasksContent() {
                         Quick Actions
                       </h2>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {["Pending", "In Progress", "Completed", "Blocked"].map((st) => (
+                        {(["Pending", "In Progress", "Completed", "Blocked"] as const).map((st) => (
                           <button
                             key={st}
                             onClick={() => quickChangeStatus(currentViewTask, st)}
@@ -611,7 +612,7 @@ function TasksContent() {
                   Task Status
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {["Pending", "In Progress", "Completed", "Blocked"].map((st) => (
+                  {(["Pending", "In Progress", "Completed", "Blocked"] as const).map((st) => (
                     <button
                       type="button"
                       key={st}
